@@ -10,8 +10,8 @@ import subprocess
 import shutil
 import sys
 
-LISTA_TXT = "lista_sonoteca.txt"
-INDEX_FAISS = "sonoteca.index"
+LISTA_TXT = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index/lista_sonoteca.txt"
+INDEX_FAISS = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index/sonoteca.index"
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 def cargar_lista(lista_txt):
