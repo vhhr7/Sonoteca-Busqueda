@@ -13,14 +13,14 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 # ====== Config ======
-LISTA_TXT = "/Users/victorherrera/Documents/Scripts/Busqueda-Natural-Sonoteca-2/Index/lista_sonoteca.txt"  # ruta absoluta a la lista
-INDEX_FAISS = "/Users/victorherrera/Documents/Scripts/Busqueda-Natural-Sonoteca-2/Index/sonoteca.index"    # índice FAISS persistente
+LISTA_TXT = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index/lista_sonoteca.txt"  # ruta absoluta a la lista (Unraid)
+INDEX_FAISS = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index/sonoteca.index"    # índice FAISS persistente (Unraid)
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 TOP_K_DEFAULT = 10
 
-# Si conoces la carpeta raíz de tus audios, puedes fijarla aquí.
-# Si la dejas en None, la inferimos a partir de las rutas en lista_sonoteca.txt
-ALLOWED_AUDIO_ROOT = None   # ej: "/Volumes/nextcloud/vicherrera/files/Sonoteca"
+# Carpeta raíz de los audios en Unraid para servirlos directamente desde Gradio
+# Si prefieres inferir, cámbialo a None.
+ALLOWED_AUDIO_ROOT = "/mnt/user/nextcloud/vicherrera/files/Sonoteca"
 
 # ====== Estado global ======
 MODEL = None
