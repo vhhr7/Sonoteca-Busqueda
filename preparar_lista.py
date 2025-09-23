@@ -1,6 +1,12 @@
 import os
 
-INDEX_DIR = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index"
+APP_ENV = os.getenv("APP_ENV", "development")
+
+if APP_ENV == "production":
+    INDEX_DIR = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index"
+else:
+    INDEX_DIR = "/Volumes/Libreria/Sonoteca/Index"
+
 os.makedirs(INDEX_DIR, exist_ok=True)
 
 def preparar_lista_sonoteca(ruta_sonoteca, salida_txt=os.path.join(INDEX_DIR, "lista_sonoteca.txt")):
@@ -29,5 +35,8 @@ def preparar_lista_sonoteca(ruta_sonoteca, salida_txt=os.path.join(INDEX_DIR, "l
 
 
 if __name__ == "__main__":
-    ruta = "/mnt/user/nextcloud/vicherrera/files/Sonoteca"  # tu ruta real
+    if APP_ENV == "production":
+        ruta = "/mnt/user/nextcloud/vicherrera/files/Sonoteca"
+    else:
+        ruta = "/Volumes/Libreria/Sonoteca"
     preparar_lista_sonoteca(ruta)
