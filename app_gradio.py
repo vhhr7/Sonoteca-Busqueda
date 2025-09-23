@@ -11,15 +11,15 @@ import gradio as gr
 import gradio.routes as gr_routes
 
 # ==== Config ====
-INDEX_DIR = "/Users/victorherrera/Documents/Scripts/Busqueda-Natural-Sonoteca-2/Index"
+INDEX_DIR = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index"
 os.makedirs(INDEX_DIR, exist_ok=True)
 LISTA_TXT = os.path.join(INDEX_DIR, "lista_sonoteca.txt")  # generado por preparar_lista.py (RUTA \t NOMBRE)
 INDEX_FAISS = os.path.join(INDEX_DIR, "sonoteca.index")    # índice FAISS persistente
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 TOP_K_DEFAULT = 10
 
-# Carpeta raíz que contiene tus audios (para evitar InvalidPathError de Gradio)
-ALLOWED_AUDIO_ROOT = "/Volumes/nextcloud/vicherrera/files/Sonoteca"
+# Carpeta raíz que contiene tus audios en Unraid
+ALLOWED_AUDIO_ROOT = "/mnt/user/nextcloud/vicherrera/files/Sonoteca"
 
 # ==== Estado global ====
 MODEL = None
