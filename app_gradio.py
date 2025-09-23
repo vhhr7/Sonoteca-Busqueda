@@ -9,6 +9,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 import gradio as gr
 import gradio.routes as gr_routes
+import socket
 
 # ==== Config ====
 INDEX_DIR = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index"
@@ -197,13 +198,33 @@ demo.get_api_info = lambda: {}
 
 gr_routes.api_info = lambda *args, **kwargs: {}
 
+def _find_free_port(start=7860, end=7890):
+    for p in range(start, end + 1):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                s.bind(("127.0.0.1", p))
+                return p
+            except OSError:
+                continue
+    return None
+
+# Resolver puerto: 
+# - si GRADIO_SERVER_PORT está definido, lo usamos;
+# - si no, buscamos libre entre 7860-7890
+_env_port = os.getenv("GRADIO_SERVER_PORT", "").strip()
+if _env_port.isdigit():
+    SERVER_PORT = int(_env_port)
+else:
+    SERVER_PORT = 8501
+
 # ---------- Lanzar servidor ----------
 if __name__ == "__main__":
     inicializar()
     # allowed_paths permite a Gradio servir archivos fuera del cwd (necesario para /Volumes/...)
     demo.launch(
             server_name="127.0.0.1",
-            server_port=7860,
+            server_port=SERVER_PORT,
             share=False,               # solo local
             show_api=False,            # evita el bug del schema
             allowed_paths=[ALLOWED_AUDIO_ROOT]
