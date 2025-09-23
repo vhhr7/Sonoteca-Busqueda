@@ -1,39 +1,31 @@
 # -*- coding: utf-8 -*-
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # silencia warning de tokenizers
-os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
-os.environ.setdefault("no_proxy", "127.0.0.1,localhost")
 
+# Selección de rutas por entorno
 APP_ENV = os.getenv("APP_ENV", "development")
 if APP_ENV == "production":
     BASE_INDEX_DIR = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index"
-    ALLOWED_AUDIO_ROOT = "/mnt/user/nextcloud/vicherrera/files/Sonoteca"
 else:
     BASE_INDEX_DIR = "/Volumes/Libreria/Sonoteca/Index"
-    ALLOWED_AUDIO_ROOT = "/Volumes/Libreria/Sonoteca"
 
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import gradio as gr
-import gradio.routes as gr_routes
-import socket
 
 # ==== Config ====
-INDEX_DIR = BASE_INDEX_DIR
-os.makedirs(INDEX_DIR, exist_ok=True)
-LISTA_TXT = os.path.join(INDEX_DIR, "lista_sonoteca.txt")  # generado por preparar_lista.py (RUTA \t NOMBRE)
-INDEX_FAISS = os.path.join(INDEX_DIR, "sonoteca.index")    # índice FAISS persistente
+LISTA_TXT = os.path.join(BASE_INDEX_DIR, "lista_sonoteca.txt")          # generado por preparar_lista.py (formato: RUTA \t NOMBRE)
+INDEX_FAISS = os.path.join(BASE_INDEX_DIR, "sonoteca.index")            # índice persistente (si existe, se carga)
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 TOP_K_DEFAULT = 10
 
-# ==== Estado global ====
+# ==== Estado global (se cargan una vez) ====
 MODEL = None
 INDEX = None
 RUTAS = []
 NOMBRES = []
 
-# ---------- Utilidades ----------
 def cargar_lista(lista_txt):
     rutas, nombres = [], []
     with open(lista_txt, "r", encoding="utf-8") as f:
@@ -44,10 +36,10 @@ def cargar_lista(lista_txt):
             parts = line.split("\t")
             if len(parts) >= 2:
                 ruta, nombre = parts[0], parts[1]
-            else:  # fallback por si quedara alguna línea antigua sin tab
+            else:
+                # fallback: sin tab, usar basename como nombre
                 ruta = parts[0]
-                base = os.path.splitext(os.path.basename(ruta))[0]
-                nombre = base.replace("_", " ").replace("-", " ")
+                nombre = os.path.splitext(os.path.basename(parts[0]))[0].replace("_", " ").replace("-", " ")
             if os.path.exists(ruta):
                 rutas.append(ruta)
                 nombres.append(nombre)
@@ -60,52 +52,49 @@ def cargar_modelo():
     return MODEL
 
 def crear_o_cargar_indice(nombres):
-    """Carga FAISS si coincide tamaño; si no, recalcula embeddings y reindexa."""
+    """Carga FAISS si el tamaño coincide; si no, re-embebe y reindexa."""
     global INDEX
     model = cargar_modelo()
+
     if os.path.exists(INDEX_FAISS):
         try:
             idx = faiss.read_index(INDEX_FAISS)
             if idx.ntotal == len(nombres):
                 INDEX = idx
-                print(f"📦 Índice cargado de {INDEX_FAISS} (items={idx.ntotal})")
                 return INDEX
-            else:
-                print(f"ℹ️ Rehaciendo índice: idx={idx.ntotal}, nombres={len(nombres)}")
-        except Exception as e:
-            print(f"⚠️ No se pudo cargar índice existente: {e}. Se recalculará.")
+        except Exception:
+            pass  # si falla, recalculamos
 
-    print("🎶 Generando embeddings de los títulos...")
+    # Recalcular
     embs = model.encode(nombres, convert_to_numpy=True, normalize_embeddings=True)
     dim = embs.shape[1]
-    idx = faiss.IndexFlatIP(dim)  # IP ≈ coseno al normalizar
+    idx = faiss.IndexFlatIP(dim)  # producto interno (equiv. coseno al normalizar)
     idx.add(embs)
+    os.makedirs(os.path.dirname(INDEX_FAISS), exist_ok=True)
     faiss.write_index(idx, INDEX_FAISS)
-    print(f"📦 Índice guardado en {INDEX_FAISS}")
     INDEX = idx
     return INDEX
 
 def inicializar():
-    """Carga lista, modelo e índice una vez al inicio."""
+    """Carga lista, modelo e índice una sola vez."""
     global RUTAS, NOMBRES
     if not os.path.exists(LISTA_TXT):
-        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta primero preparar_lista.py con APP_ENV={APP_ENV} para generarla.")
+        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta primero preparar_lista.py con APP_ENV={APP_ENV}")
     RUTAS, NOMBRES = cargar_lista(LISTA_TXT)
-    print(f"✅ Cargados {len(NOMBRES)} items")
     cargar_modelo()
     crear_o_cargar_indice(NOMBRES)
 
-# ---------- Lógica de búsqueda ----------
-def buscar_backend(prompt, k):
-    """Devuelve filas para la tabla, ruta top-1 para player, y opciones del dropdown."""
-    if not prompt or not prompt.strip():
+# ===== Lógica de búsqueda =====
+def buscar(prompt, k):
+    if not prompt.strip():
         return [], None, gr.update(choices=[], value=None)
 
     q_emb = MODEL.encode([prompt], convert_to_numpy=True, normalize_embeddings=True)
     D, I = INDEX.search(q_emb, int(k))
-
-    filas, opciones = [], []
+    filas = []
+    opciones = []
     for rank, idx in enumerate(I[0]):
+        # Puede devolver -1 si no hay suficientes resultados; filtrar
         if idx < 0 or idx >= len(NOMBRES):
             continue
         ruta = RUTAS[idx]
@@ -113,52 +102,189 @@ def buscar_backend(prompt, k):
         score = float(D[0][rank])
         filas.append([rank + 1, nombre, ruta, round(score, 3)])
         opciones.append(f"{rank+1}. {nombre}")
-
+    # Seleccionar por defecto el top-1 si hay
     selected = opciones[0] if opciones else None
+    # Para el reproductor, archivo top-1 si existe
     audio_path = filas[0][2] if filas else None
     return filas, audio_path, gr.update(choices=opciones, value=selected)
 
 def elegir_y_reproducir(eleccion, tabla):
-    """
-    eleccion: '1. Nombre'
-    tabla: puede venir como list[list] o como pandas.DataFrame
-    Devuelve la ruta (columna 3) o None.
-    """
-    # Validación de la elección
-    if not eleccion:
+    """eleccion: '1. Nombre', tabla: [[rank, nombre, ruta, score], ...]"""
+    if not eleccion or not tabla:
         return None
     try:
         idx = int(eleccion.split(".")[0]) - 1
     except Exception:
         return None
+    if 0 <= idx < len(tabla):
+        return tabla[idx][2]  # ruta
+    return None
 
-    # Normalizar la tabla a lista de filas
-    rows = None
-    # Si es DataFrame (tiene .empty y .values)
-    if hasattr(tabla, "empty") and hasattr(tabla, "values"):
-        if tabla.empty:
-            return None
-        rows = tabla.values.tolist()
-    else:
-        # Se espera list[list]
-        if not isinstance(tabla, list) or len(tabla) == 0:
-            return None
-        rows = tabla
+# ===== UI Gradio =====
+with gr.Blocks(title="Buscador Sonoteca (títulos)") as demo:
+    gr.Markdown("# 🔎 Buscador de Sonidos por Texto (solo títulos)\nBusca por lenguaje natural, ve la ruta y escucha el archivo.")
+# -*- coding: utf-8 -*-
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"  # silencia warning de tokenizers
 
-    # Seguridad de rango
-    if idx < 0 or idx >= len(rows):
+# Selección de rutas por entorno
+APP_ENV = os.getenv("APP_ENV", "development")
+if APP_ENV == "production":
+    BASE_INDEX_DIR = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index"
+else:
+    BASE_INDEX_DIR = "/Volumes/Libreria/Sonoteca/Index"
+
+import faiss
+import numpy as np
+from sentence_transformers import SentenceTransformer
+import gradio as gr
+
+# ==== Config ====
+LISTA_TXT = os.path.join(BASE_INDEX_DIR, "lista_sonoteca.txt")          # generado por preparar_lista.py (formato: RUTA \t NOMBRE)
+INDEX_FAISS = os.path.join(BASE_INDEX_DIR, "sonoteca.index")            # índice persistente (si existe, se carga)
+MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+TOP_K_DEFAULT = 10
+
+# ==== Estado global (se cargan una vez) ====
+MODEL = None
+INDEX = None
+RUTAS = []
+NOMBRES = []
+
+def cargar_lista(lista_txt):
+    rutas, nombres = [], []
+    with open(lista_txt, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line:
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 2:
+                ruta, nombre = parts[0], parts[1]
+            else:
+                # fallback: sin tab, usar basename como nombre
+                ruta = parts[0]
+                nombre = os.path.splitext(os.path.basename(parts[0]))[0].replace("_", " ").replace("-", " ")
+            if os.path.exists(ruta):
+                rutas.append(ruta)
+                nombres.append(nombre)
+    return rutas, nombres
+
+def cargar_modelo():
+    global MODEL
+    if MODEL is None:
+        MODEL = SentenceTransformer(MODEL_NAME)
+    return MODEL
+
+def crear_o_cargar_indice(nombres):
+    """Carga FAISS si el tamaño coincide; si no, re-embebe y reindexa."""
+    global INDEX
+    model = cargar_modelo()
+
+    if os.path.exists(INDEX_FAISS):
+        try:
+            idx = faiss.read_index(INDEX_FAISS)
+            if idx.ntotal == len(nombres):
+                INDEX = idx
+                return INDEX
+        except Exception:
+            pass  # si falla, recalculamos
+
+    # Recalcular
+    embs = model.encode(nombres, convert_to_numpy=True, normalize_embeddings=True)
+    dim = embs.shape[1]
+    idx = faiss.IndexFlatIP(dim)  # producto interno (equiv. coseno al normalizar)
+    idx.add(embs)
+    os.makedirs(os.path.dirname(INDEX_FAISS), exist_ok=True)
+    faiss.write_index(idx, INDEX_FAISS)
+    INDEX = idx
+    return INDEX
+
+def inicializar():
+    """Carga lista, modelo e índice una sola vez."""
+    global RUTAS, NOMBRES
+    if not os.path.exists(LISTA_TXT):
+        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta primero preparar_lista.py con APP_ENV={APP_ENV}")
+    RUTAS, NOMBRES = cargar_lista(LISTA_TXT)
+    cargar_modelo()
+    crear_o_cargar_indice(NOMBRES)
+
+# ===== Lógica de búsqueda =====
+def buscar(prompt, k):
+    if not prompt.strip():
+        return [], None, gr.update(choices=[], value=None)
+
+    q_emb = MODEL.encode([prompt], convert_to_numpy=True, normalize_embeddings=True)
+    D, I = INDEX.search(q_emb, int(k))
+    filas = []
+    opciones = []
+    for rank, idx in enumerate(I[0]):
+        # Puede devolver -1 si no hay suficientes resultados; filtrar
+        if idx < 0 or idx >= len(NOMBRES):
+            continue
+        ruta = RUTAS[idx]
+        nombre = NOMBRES[idx]
+        score = float(D[0][rank])
+        filas.append([rank + 1, nombre, ruta, round(score, 3)])
+        opciones.append(f"{rank+1}. {nombre}")
+    # Seleccionar por defecto el top-1 si hay
+    selected = opciones[0] if opciones else None
+    # Para el reproductor, archivo top-1 si existe
+    audio_path = filas[0][2] if filas else None
+    return filas, audio_path, gr.update(choices=opciones, value=selected)
+
+def elegir_y_reproducir(eleccion, tabla):
+    """eleccion: '1. Nombre', tabla: puede llegar como list[list] o como pandas.DataFrame
+    Devuelve la ruta del elemento elegido o None.
+    """
+    # Si no hay elección, no hacemos nada
+    if not eleccion:
         return None
 
-    # Estructura esperada: [#, nombre, ruta, score]
+    # Normalizar la tabla a una lista de filas [[rank, nombre, ruta, score], ...]
+    filas = None
     try:
-        ruta = rows[idx][2]
+        # Si es un DataFrame de pandas (como lo entrega gr.Dataframe en 3.x)
+        import pandas as pd  # import local para no obligar en tiempo de import
+        if isinstance(tabla, pd.DataFrame):
+            if tabla.empty:
+                return None
+            filas = tabla.values.tolist()
+    except Exception:
+        pass
+
+    # Si ya viene como lista de listas
+    if filas is None:
+        if isinstance(tabla, list):
+            # Puede venir como list de dicts o list de lists
+            if not tabla:
+                return None
+            if isinstance(tabla[0], dict):
+                # Ordenar columnas en el orden esperado
+                cols = ["#", "Nombre", "Ruta", "Score"]
+                filas = [[row.get(c) for c in cols] for row in tabla]
+            else:
+                filas = tabla
+        else:
+            # Tipo no soportado
+            return None
+
+    # Parsear el índice seleccionado
+    try:
+        idx = int(str(eleccion).split(".")[0]) - 1
     except Exception:
         return None
+
+    if idx < 0 or idx >= len(filas):
+        return None
+
+    # La columna 3 es la ruta según nuestro formato [rank, nombre, ruta, score]
+    ruta = filas[idx][2]
     return ruta
 
-# ---------- UI Gradio ----------
+# ===== UI Gradio =====
 with gr.Blocks(title="Buscador Sonoteca (títulos)") as demo:
-    gr.Markdown("# 🔎 Buscador de Sonidos por Texto (solo títulos)\nBusca con lenguaje natural, ve la ruta y escucha el archivo.")
+    gr.Markdown("# 🔎 Buscador de Sonidos por Texto (solo títulos)\nBusca por lenguaje natural, ve la ruta y escucha el archivo.")
 
     with gr.Row():
         prompt = gr.Textbox(label="Escribe tu búsqueda", placeholder="ej. viento en bosque oscuro, ramas")
@@ -166,14 +292,15 @@ with gr.Blocks(title="Buscador Sonoteca (títulos)") as demo:
 
     buscar_btn = gr.Button("Buscar", variant="primary")
 
-    resultados = gr.Dataframe(
-        headers=["#","Nombre","Ruta","Score"],
-        datatype=["number","str","str","number"],
-        row_count=(0, "dynamic"),
-        wrap=True,
-        label="Resultados",
-        interactive=False
-    )
+    with gr.Row():
+        resultados = gr.Dataframe(
+            headers=["#","Nombre","Ruta","Score"],
+            datatype=["number","str","str","number"],
+            row_count=(0, "dynamic"),
+            wrap=True,
+            label="Resultados",
+            interactive=False
+        )
 
     with gr.Row():
         opcion = gr.Dropdown(choices=[], label="Elegir para reproducir", interactive=True)
@@ -181,9 +308,10 @@ with gr.Blocks(title="Buscador Sonoteca (títulos)") as demo:
 
     audio_out = gr.Audio(label="Reproductor", autoplay=True)
 
-    # Callbacks
+    # Eventos
     def do_search(q, k):
-        filas, audio_path, dd = buscar_backend(q, k)
+        filas, audio_path, dd = buscar(q, k)
+        # si hay audio top-1, lo cargamos en el player
         return filas, audio_path, dd
 
     buscar_btn.click(
@@ -199,38 +327,55 @@ with gr.Blocks(title="Buscador Sonoteca (títulos)") as demo:
         outputs=[audio_out]
     )
 
-demo.get_api_info = lambda: {}
-
-gr_routes.api_info = lambda *args, **kwargs: {}
-
-def _find_free_port(start=7860, end=7890):
-    for p in range(start, end + 1):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                s.bind(("127.0.0.1", p))
-                return p
-            except OSError:
-                continue
-    return None
-
-# Resolver puerto: 
-# - si GRADIO_SERVER_PORT está definido, lo usamos;
-# - si no, buscamos libre entre 7860-7890
-_env_port = os.getenv("GRADIO_SERVER_PORT", "").strip()
-if _env_port.isdigit():
-    SERVER_PORT = int(_env_port)
-else:
-    SERVER_PORT = 8501
-
-# ---------- Lanzar servidor ----------
+# Lanzar
 if __name__ == "__main__":
     inicializar()
-    # allowed_paths permite a Gradio servir archivos fuera del cwd (necesario para /Volumes/...)
-    demo.launch(
-            server_name="127.0.0.1",
-            server_port=SERVER_PORT,
-            share=False,               # solo local
-            show_api=False,            # evita el bug del schema
-            allowed_paths=[ALLOWED_AUDIO_ROOT]
+    # share=False para local; si quieres link público, usa share=True
+    demo.launch(server_name="127.0.0.1", server_port=7860, share=False)
+
+    with gr.Row():
+        prompt = gr.Textbox(label="Escribe tu búsqueda", placeholder="ej. viento en bosque oscuro, ramas")
+        topk = gr.Slider(1, 50, value=TOP_K_DEFAULT, step=1, label="Resultados (Top-K)")
+
+    buscar_btn = gr.Button("Buscar", variant="primary")
+
+    with gr.Row():
+        resultados = gr.Dataframe(
+            headers=["#","Nombre","Ruta","Score"],
+            datatype=["number","str","str","number"],
+            row_count=(0, "dynamic"),
+            wrap=True,
+            label="Resultados",
+            interactive=False
         )
+
+    with gr.Row():
+        opcion = gr.Dropdown(choices=[], label="Elegir para reproducir", interactive=True)
+        reproducir_btn = gr.Button("▶️ Reproducir seleccionado")
+
+    audio_out = gr.Audio(label="Reproductor", autoplay=True)
+
+    # Eventos
+    def do_search(q, k):
+        filas, audio_path, dd = buscar(q, k)
+        # si hay audio top-1, lo cargamos en el player
+        return filas, audio_path, dd
+
+    buscar_btn.click(
+        do_search,
+        inputs=[prompt, topk],
+        outputs=[resultados, audio_out, opcion],
+        preprocess=True
+    )
+
+    reproducir_btn.click(
+        elegir_y_reproducir,
+        inputs=[opcion, resultados],
+        outputs=[audio_out]
+    )
+
+# Lanzar
+if __name__ == "__main__":
+    inicializar()
+    # share=False para local; si quieres link público, usa share=True
+    demo.launch(server_name="127.0.0.1", server_port=7860, share=False)
