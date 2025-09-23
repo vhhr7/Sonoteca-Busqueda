@@ -6,6 +6,14 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"  # silencia warning de tokenizers
 os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
 os.environ.setdefault("no_proxy", "127.0.0.1,localhost")
 
+APP_ENV = os.getenv("APP_ENV", "development")
+if APP_ENV == "production":
+    BASE_INDEX_DIR = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index"
+    ALLOWED_AUDIO_ROOT = "/mnt/user/nextcloud/vicherrera/files/Sonoteca"
+else:
+    BASE_INDEX_DIR = "/Volumes/Libreria/Sonoteca/Index"
+    ALLOWED_AUDIO_ROOT = "/Volumes/Libreria/Sonoteca"
+
 import gradio as gr
 import gradio.routes as gr_routes
 import faiss
@@ -13,14 +21,10 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 # ====== Config ======
-LISTA_TXT = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index/lista_sonoteca.txt"  # ruta absoluta a la lista (Unraid)
-INDEX_FAISS = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index/sonoteca.index"    # índice FAISS persistente (Unraid)
+LISTA_TXT = os.path.join(BASE_INDEX_DIR, "lista_sonoteca.txt")
+INDEX_FAISS = os.path.join(BASE_INDEX_DIR, "sonoteca.index")
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 TOP_K_DEFAULT = 10
-
-# Carpeta raíz de los audios en Unraid para servirlos directamente desde Gradio
-# Si prefieres inferir, cámbialo a None.
-ALLOWED_AUDIO_ROOT = "/mnt/user/nextcloud/vicherrera/files/Sonoteca"
 
 # ====== Estado global ======
 MODEL = None
@@ -96,6 +100,7 @@ def crear_o_cargar_indice(nombres):
     dim = embs.shape[1]
     idx = faiss.IndexFlatIP(dim)  # IP ≈ coseno al normalizar
     idx.add(embs)
+    os.makedirs(os.path.dirname(INDEX_FAISS), exist_ok=True)
     faiss.write_index(idx, INDEX_FAISS)
     print(f"📦 Índice guardado en {INDEX_FAISS}")
     INDEX = idx
@@ -105,7 +110,7 @@ def inicializar():
     """Carga lista, modelo e índice una vez al inicio."""
     global RUTAS, NOMBRES
     if not os.path.exists(LISTA_TXT):
-        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta primero preparar_lista.py")
+        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta primero preparar_lista.py con APP_ENV={APP_ENV} para generarla.")
     RUTAS, NOMBRES = cargar_lista(LISTA_TXT)
     print(f"✅ Cargados {len(NOMBRES)} items")
     cargar_modelo()

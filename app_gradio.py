@@ -4,6 +4,14 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"  # silencia warning de tokenizers
 os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
 os.environ.setdefault("no_proxy", "127.0.0.1,localhost")
 
+APP_ENV = os.getenv("APP_ENV", "development")
+if APP_ENV == "production":
+    BASE_INDEX_DIR = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index"
+    ALLOWED_AUDIO_ROOT = "/mnt/user/nextcloud/vicherrera/files/Sonoteca"
+else:
+    BASE_INDEX_DIR = "/Volumes/Libreria/Sonoteca/Index"
+    ALLOWED_AUDIO_ROOT = "/Volumes/Libreria/Sonoteca"
+
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -12,15 +20,12 @@ import gradio.routes as gr_routes
 import socket
 
 # ==== Config ====
-INDEX_DIR = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index"
+INDEX_DIR = BASE_INDEX_DIR
 os.makedirs(INDEX_DIR, exist_ok=True)
 LISTA_TXT = os.path.join(INDEX_DIR, "lista_sonoteca.txt")  # generado por preparar_lista.py (RUTA \t NOMBRE)
 INDEX_FAISS = os.path.join(INDEX_DIR, "sonoteca.index")    # índice FAISS persistente
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 TOP_K_DEFAULT = 10
-
-# Carpeta raíz que contiene tus audios en Unraid
-ALLOWED_AUDIO_ROOT = "/mnt/user/nextcloud/vicherrera/files/Sonoteca"
 
 # ==== Estado global ====
 MODEL = None
@@ -84,7 +89,7 @@ def inicializar():
     """Carga lista, modelo e índice una vez al inicio."""
     global RUTAS, NOMBRES
     if not os.path.exists(LISTA_TXT):
-        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta primero preparar_lista.py")
+        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta primero preparar_lista.py con APP_ENV={APP_ENV} para generarla.")
     RUTAS, NOMBRES = cargar_lista(LISTA_TXT)
     print(f"✅ Cargados {len(NOMBRES)} items")
     cargar_modelo()

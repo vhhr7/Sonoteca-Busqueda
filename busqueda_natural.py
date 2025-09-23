@@ -3,6 +3,12 @@
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # silencia el warning
 
+APP_ENV = os.getenv("APP_ENV", "development")
+if APP_ENV == "production":
+    BASE_INDEX_DIR = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index"
+else:
+    BASE_INDEX_DIR = "/Volumes/Libreria/Sonoteca/Index"
+
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
@@ -10,8 +16,8 @@ import subprocess
 import shutil
 import sys
 
-LISTA_TXT = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index/lista_sonoteca.txt"
-INDEX_FAISS = "/mnt/user/nextcloud/vicherrera/files/Sonoteca/Index/sonoteca.index"
+LISTA_TXT = os.path.join(BASE_INDEX_DIR, "lista_sonoteca.txt")
+INDEX_FAISS = os.path.join(BASE_INDEX_DIR, "sonoteca.index")
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 def cargar_lista(lista_txt):
@@ -50,6 +56,7 @@ def cargar_o_crear_indice(nombres, model):
     dim = embs.shape[1]
     index = faiss.IndexFlatIP(dim)  # coseno (porque normalizamos)
     index.add(embs)
+    os.makedirs(os.path.dirname(INDEX_FAISS), exist_ok=True)
     faiss.write_index(index, INDEX_FAISS)
     print(f"📦 Índice guardado en {INDEX_FAISS}")
     return index
@@ -95,7 +102,7 @@ def parar_reproduccion(proc):
 if __name__ == "__main__":
     # Cargar lista
     if not os.path.exists(LISTA_TXT):
-        print(f"❌ No existe {LISTA_TXT}. Primero ejecuta preparar_lista.py")
+        print(f"❌ No existe {LISTA_TXT}. Primero ejecuta preparar_lista.py con APP_ENV={APP_ENV} para generar la lista.")
         sys.exit(1)
 
     rutas, nombres = cargar_lista(LISTA_TXT)
