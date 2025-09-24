@@ -206,7 +206,7 @@ with gr.Blocks(title="Buscador Sonoteca (títulos)") as demo:
 if __name__ == "__main__":
     inicializar()
     # share=False para local; si quieres link público, usa share=True
-    demo.launch(server_name="127.0.0.1", server_port=7860, share=False)
+    demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
 
 # -*- coding: utf-8 -*-
 import os
@@ -416,4 +416,4 @@ with gr.Blocks(title="Buscador Sonoteca (títulos)") as demo:
 if __name__ == "__main__":
     inicializar()
     # share=False para local; si quieres link público, usa share=True
-    demo.launch(server_name="127.0.0.1", server_port=7860, share=False)
+    demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
