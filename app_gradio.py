@@ -4,6 +4,19 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"  # silencia warning de tokenizers
 from pydub import AudioSegment
 import tempfile
 
+# Helper para convertir AIFF a WAV temporal si es necesario
+def convertir_si_aiff(ruta: str) -> str:
+    """
+    Si la ruta termina en .aiff, convierte a WAV temporal para reproducción en navegador.
+    Devuelve la ruta de reproducción (WAV temporal) o la ruta original si no hace falta.
+    """
+    if ruta and ruta.lower().endswith(".aiff"):
+        audio = AudioSegment.from_file(ruta, format="aiff")
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        audio.export(tmp.name, format="wav")
+        return tmp.name
+    return ruta
+
 # Selección de rutas por entorno
 APP_ENV = os.getenv("APP_ENV", "development")
 if APP_ENV == "production":
@@ -110,9 +123,10 @@ def buscar(prompt, k):
         opciones.append(f"{rank+1}. {nombre}")
     # Seleccionar por defecto el top-1 si hay
     selected = opciones[0] if opciones else None
-    # Para el reproductor, archivo top-1 si existe
-    audio_path = filas[0][2] if filas else None
-    return filas, audio_path, gr.update(choices=opciones, value=selected)
+    # Ruta original del top-1 (para descarga) y ruta de reproducción (convertida si es AIFF)
+    download_path = filas[0][2] if filas else None
+    audio_path = convertir_si_aiff(download_path) if download_path else None
+    return filas, audio_path, gr.update(choices=opciones, value=selected), download_path
 
 def elegir_y_reproducir(eleccion, tabla):
     """eleccion: '1. Nombre', tabla: puede llegar como list[list] o como pandas.DataFrame
@@ -161,13 +175,8 @@ def elegir_y_reproducir(eleccion, tabla):
 
     # La columna 3 es la ruta según nuestro formato [rank, nombre, ruta, score]
     ruta = filas[idx][2]
-    # Si es AIFF, convertir a WAV temporal
-    if ruta and ruta.lower().endswith(".aiff"):
-        audio = AudioSegment.from_file(ruta, format="aiff")
-        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        audio.export(tmp.name, format="wav")
-        return tmp.name
-    return ruta
+    playback = convertir_si_aiff(ruta)
+    return playback, ruta
 
 # ===== UI Gradio =====
 with gr.Blocks(title="Buscador Sonoteca (títulos)") as demo:
@@ -194,24 +203,24 @@ with gr.Blocks(title="Buscador Sonoteca (títulos)") as demo:
         reproducir_btn = gr.Button("▶️ Reproducir seleccionado")
 
     audio_out = gr.Audio(label="Reproductor", autoplay=True)
+    descarga = gr.File(label="Descargar original", file_count="single")
 
     # Eventos
     def do_search(q, k):
-        filas, audio_path, dd = buscar(q, k)
-        # si hay audio top-1, lo cargamos en el player
-        return filas, audio_path, dd
+        filas, audio_path, dd, download_path = buscar(q, k)
+        return filas, audio_path, dd, download_path
 
     buscar_btn.click(
         do_search,
         inputs=[prompt, topk],
-        outputs=[resultados, audio_out, opcion],
+        outputs=[resultados, audio_out, opcion, descarga],
         preprocess=True
     )
 
     reproducir_btn.click(
         elegir_y_reproducir,
         inputs=[opcion, resultados],
-        outputs=[audio_out]
+        outputs=[audio_out, descarga]
     )
 
 # Lanzar
@@ -220,6 +229,8 @@ if __name__ == "__main__":
     # share=False para local; si quieres link público, usa share=True
     demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
 
+
+# ====== SEGUNDO BLOQUE (duplicado) ======
 # -*- coding: utf-8 -*-
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # silencia warning de tokenizers
@@ -330,9 +341,9 @@ def buscar(prompt, k):
         opciones.append(f"{rank+1}. {nombre}")
     # Seleccionar por defecto el top-1 si hay
     selected = opciones[0] if opciones else None
-    # Para el reproductor, archivo top-1 si existe
-    audio_path = filas[0][2] if filas else None
-    return filas, audio_path, gr.update(choices=opciones, value=selected)
+    download_path = filas[0][2] if filas else None
+    audio_path = convertir_si_aiff(download_path) if download_path else None
+    return filas, audio_path, gr.update(choices=opciones, value=selected), download_path
 
 def elegir_y_reproducir(eleccion, tabla):
     """eleccion: '1. Nombre', tabla: puede llegar como list[list] o como pandas.DataFrame
@@ -381,13 +392,8 @@ def elegir_y_reproducir(eleccion, tabla):
 
     # La columna 3 es la ruta según nuestro formato [rank, nombre, ruta, score]
     ruta = filas[idx][2]
-    # Si es AIFF, convertir a WAV temporal
-    if ruta and ruta.lower().endswith(".aiff"):
-        audio = AudioSegment.from_file(ruta, format="aiff")
-        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        audio.export(tmp.name, format="wav")
-        return tmp.name
-    return ruta
+    playback = convertir_si_aiff(ruta)
+    return playback, ruta
 
 # ===== UI Gradio =====
 with gr.Blocks(title="Buscador Sonoteca (títulos)") as demo:
@@ -414,24 +420,24 @@ with gr.Blocks(title="Buscador Sonoteca (títulos)") as demo:
         reproducir_btn = gr.Button("▶️ Reproducir seleccionado")
 
     audio_out = gr.Audio(label="Reproductor", autoplay=True)
+    descarga = gr.File(label="Descargar original", file_count="single")
 
     # Eventos
     def do_search(q, k):
-        filas, audio_path, dd = buscar(q, k)
-        # si hay audio top-1, lo cargamos en el player
-        return filas, audio_path, dd
+        filas, audio_path, dd, download_path = buscar(q, k)
+        return filas, audio_path, dd, download_path
 
     buscar_btn.click(
         do_search,
         inputs=[prompt, topk],
-        outputs=[resultados, audio_out, opcion],
+        outputs=[resultados, audio_out, opcion, descarga],
         preprocess=True
     )
 
     reproducir_btn.click(
         elegir_y_reproducir,
         inputs=[opcion, resultados],
-        outputs=[audio_out]
+        outputs=[audio_out, descarga]
     )
 
 # Lanzar
