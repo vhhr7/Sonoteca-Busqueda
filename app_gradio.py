@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # silencia warning de tokenizers
+from pydub import AudioSegment
+import tempfile
 
 # Selección de rutas por entorno
 APP_ENV = os.getenv("APP_ENV", "development")
@@ -155,6 +157,12 @@ def elegir_y_reproducir(eleccion, tabla):
 
     # La columna 3 es la ruta según nuestro formato [rank, nombre, ruta, score]
     ruta = filas[idx][2]
+    # Si es AIFF, convertir a WAV temporal
+    if ruta and ruta.lower().endswith(".aiff"):
+        audio = AudioSegment.from_file(ruta, format="aiff")
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        audio.export(tmp.name, format="wav")
+        return tmp.name
     return ruta
 
 # ===== UI Gradio =====
@@ -365,6 +373,12 @@ def elegir_y_reproducir(eleccion, tabla):
 
     # La columna 3 es la ruta según nuestro formato [rank, nombre, ruta, score]
     ruta = filas[idx][2]
+    # Si es AIFF, convertir a WAV temporal
+    if ruta and ruta.lower().endswith(".aiff"):
+        audio = AudioSegment.from_file(ruta, format="aiff")
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        audio.export(tmp.name, format="wav")
+        return tmp.name
     return ruta
 
 # ===== UI Gradio =====
