@@ -178,54 +178,6 @@ def elegir_y_reproducir(eleccion, tabla):
     playback = convertir_si_aiff(ruta)
     return playback, ruta
 
-
-# === Helper para mover selección en resultados ===
-def _mover_reproduccion(eleccion, tabla, delta):
-    """
-    Mueve la selección actual delta posiciones (±1) dentro de la tabla de resultados
-    y devuelve (audio_playback, ruta_original, dropdown_update).
-    """
-    if tabla is None:
-        return None, None, gr.update()
-    # Normalizar la tabla a lista de filas [[#, nombre, ruta, score], ...]
-    filas = None
-    try:
-        import pandas as pd
-        if isinstance(tabla, pd.DataFrame):
-            if tabla.empty:
-                return None, None, gr.update()
-            filas = tabla.values.tolist()
-    except Exception:
-        pass
-    if filas is None:
-        if isinstance(tabla, list):
-            if not tabla:
-                return None, None, gr.update()
-            if isinstance(tabla[0], dict):
-                cols = ["#", "Nombre", "Ruta", "Score"]
-                filas = [[row.get(c) for c in cols] for row in tabla]
-            else:
-                filas = tabla
-        else:
-            return None, None, gr.update()
-
-    # Índice actual a partir de 'eleccion' tipo "N. Nombre"
-    try:
-        cur = int(str(eleccion).split(".")[0]) - 1 if eleccion else 0
-    except Exception:
-        cur = 0
-
-    if not filas:
-        return None, None, gr.update()
-
-    # Nuevo índice dentro de límites
-    new = max(0, min(len(filas) - 1, cur + delta))
-    ruta = filas[new][2]
-    nombre = filas[new][1]
-    playback = convertir_si_aiff(ruta)
-    new_value = f"{new+1}. {nombre}"
-    return playback, ruta, gr.update(value=new_value)
-
 # ===== UI Gradio =====
 with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
     gr.Markdown("# 🔎 Buscador de Sonidos por Texto\nBusca por lenguaje natural, ve la ruta y escucha el archivo.")
@@ -249,9 +201,6 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
     with gr.Row():
         opcion = gr.Dropdown(choices=[], label="Elegir para reproducir", interactive=True)
         reproducir_btn = gr.Button("▶️ Reproducir seleccionado")
-    with gr.Row():
-        anterior_btn = gr.Button("⏮️ Anterior")
-        siguiente_btn = gr.Button("⏭️ Siguiente")
 
     audio_out = gr.Audio(label="Reproductor", autoplay=True, elem_id="player")
     descarga = gr.File(label="Descargar original", file_count="single")
@@ -295,23 +244,6 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
         elegir_y_reproducir,
         inputs=[opcion, resultados],
         outputs=[audio_out, descarga]
-    )
-
-    # Wrappers para navegación
-    def _anterior(eleccion, tabla):
-        return _mover_reproduccion(eleccion, tabla, -1)
-    def _siguiente(eleccion, tabla):
-        return _mover_reproduccion(eleccion, tabla, +1)
-
-    anterior_btn.click(
-        _anterior,
-        inputs=[opcion, resultados],
-        outputs=[audio_out, descarga, opcion]
-    )
-    siguiente_btn.click(
-        _siguiente,
-        inputs=[opcion, resultados],
-        outputs=[audio_out, descarga, opcion]
     )
 
 # Lanzar
@@ -486,54 +418,6 @@ def elegir_y_reproducir(eleccion, tabla):
     playback = convertir_si_aiff(ruta)
     return playback, ruta
 
-
-# === Helper para mover selección en resultados ===
-def _mover_reproduccion(eleccion, tabla, delta):
-    """
-    Mueve la selección actual delta posiciones (±1) dentro de la tabla de resultados
-    y devuelve (audio_playback, ruta_original, dropdown_update).
-    """
-    if tabla is None:
-        return None, None, gr.update()
-    # Normalizar la tabla a lista de filas [[#, nombre, ruta, score], ...]
-    filas = None
-    try:
-        import pandas as pd
-        if isinstance(tabla, pd.DataFrame):
-            if tabla.empty:
-                return None, None, gr.update()
-            filas = tabla.values.tolist()
-    except Exception:
-        pass
-    if filas is None:
-        if isinstance(tabla, list):
-            if not tabla:
-                return None, None, gr.update()
-            if isinstance(tabla[0], dict):
-                cols = ["#", "Nombre", "Ruta", "Score"]
-                filas = [[row.get(c) for c in cols] for row in tabla]
-            else:
-                filas = tabla
-        else:
-            return None, None, gr.update()
-
-    # Índice actual a partir de 'eleccion' tipo "N. Nombre"
-    try:
-        cur = int(str(eleccion).split(".")[0]) - 1 if eleccion else 0
-    except Exception:
-        cur = 0
-
-    if not filas:
-        return None, None, gr.update()
-
-    # Nuevo índice dentro de límites
-    new = max(0, min(len(filas) - 1, cur + delta))
-    ruta = filas[new][2]
-    nombre = filas[new][1]
-    playback = convertir_si_aiff(ruta)
-    new_value = f"{new+1}. {nombre}"
-    return playback, ruta, gr.update(value=new_value)
-
 # ===== UI Gradio =====
 with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
     gr.Markdown("# 🔎 Buscador de Sonidos por Texto\nBusca por lenguaje natural, ve la ruta y escucha el archivo.")
@@ -557,9 +441,6 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
     with gr.Row():
         opcion = gr.Dropdown(choices=[], label="Elegir para reproducir", interactive=True)
         reproducir_btn = gr.Button("▶️ Reproducir seleccionado")
-    with gr.Row():
-        anterior_btn = gr.Button("⏮️ Anterior")
-        siguiente_btn = gr.Button("⏭️ Siguiente")
 
     audio_out = gr.Audio(label="Reproductor", autoplay=True, elem_id="player")
     descarga = gr.File(label="Descargar original", file_count="single")
@@ -603,23 +484,6 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
         elegir_y_reproducir,
         inputs=[opcion, resultados],
         outputs=[audio_out, descarga]
-    )
-
-    # Wrappers para navegación
-    def _anterior(eleccion, tabla):
-        return _mover_reproduccion(eleccion, tabla, -1)
-    def _siguiente(eleccion, tabla):
-        return _mover_reproduccion(eleccion, tabla, +1)
-
-    anterior_btn.click(
-        _anterior,
-        inputs=[opcion, resultados],
-        outputs=[audio_out, descarga, opcion]
-    )
-    siguiente_btn.click(
-        _siguiente,
-        inputs=[opcion, resultados],
-        outputs=[audio_out, descarga, opcion]
     )
 
 # Lanzar
