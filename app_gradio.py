@@ -253,8 +253,31 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
         anterior_btn = gr.Button("⏮️ Anterior")
         siguiente_btn = gr.Button("⏭️ Siguiente")
 
-    audio_out = gr.Audio(label="Reproductor", autoplay=True)
+    audio_out = gr.Audio(label="Reproductor", autoplay=True, elem_id="player")
     descarga = gr.File(label="Descargar original", file_count="single")
+    gr.HTML("""
+    <script>
+    (function () {
+      function setVol() {
+        const wrap = document.getElementById('player');
+        if (!wrap) return;
+        const a = wrap.querySelector('audio') || wrap.querySelector('video');
+        if (!a) return;
+        a.volume = 0.5;
+        // Asegura 50% cada vez que empiece a reproducir
+        a.addEventListener('play', function () { this.volume = 0.5; }, { capture: false });
+      }
+      // Observa cambios en el componente para re-aplicar volumen cuando cambia la fuente
+      const target = document.getElementById('player');
+      if (target) {
+        const obs = new MutationObserver(setVol);
+        obs.observe(target, { childList: true, subtree: true });
+      }
+      // Primer ajuste
+      setVol();
+    })();
+    </script>
+    """)
 
     # Eventos
     def do_search(q, k):
@@ -538,8 +561,31 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
         anterior_btn = gr.Button("⏮️ Anterior")
         siguiente_btn = gr.Button("⏭️ Siguiente")
 
-    audio_out = gr.Audio(label="Reproductor", autoplay=True)
+    audio_out = gr.Audio(label="Reproductor", autoplay=True, elem_id="player")
     descarga = gr.File(label="Descargar original", file_count="single")
+    gr.HTML("""
+    <script>
+    (function () {
+      function setVol() {
+        const wrap = document.getElementById('player');
+        if (!wrap) return;
+        const a = wrap.querySelector('audio') || wrap.querySelector('video');
+        if (!a) return;
+        a.volume = 0.5;
+        // Asegura 50% cada vez que empiece a reproducir
+        a.addEventListener('play', function () { this.volume = 0.5; }, { capture: false });
+      }
+      // Observa cambios en el componente para re-aplicar volumen cuando cambia la fuente
+      const target = document.getElementById('player');
+      if (target) {
+        const obs = new MutationObserver(setVol);
+        obs.observe(target, { childList: true, subtree: true });
+      }
+      // Primer ajuste
+      setVol();
+    })();
+    </script>
+    """)
 
     # Eventos
     def do_search(q, k):
