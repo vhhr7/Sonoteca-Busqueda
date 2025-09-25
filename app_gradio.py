@@ -179,8 +179,8 @@ def elegir_y_reproducir(eleccion, tabla):
     return playback, ruta
 
 # ===== UI Gradio =====
-with gr.Blocks(title="Buscador Sonoteca (títulos)") as demo:
-    gr.Markdown("# 🔎 Buscador de Sonidos por Texto (solo títulos)\nBusca por lenguaje natural, ve la ruta y escucha el archivo.")
+with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
+    gr.Markdown("# 🔎 Buscador de Sonidos por Texto\nBusca por lenguaje natural, ve la ruta y escucha el archivo.")
 
     with gr.Row():
         prompt = gr.Textbox(label="Escribe tu búsqueda", placeholder="ej. viento en bosque oscuro, ramas")
@@ -396,8 +396,8 @@ def elegir_y_reproducir(eleccion, tabla):
     return playback, ruta
 
 # ===== UI Gradio =====
-with gr.Blocks(title="Buscador Sonoteca (títulos)") as demo:
-    gr.Markdown("# 🔎 Buscador de Sonidos por Texto (solo títulos)\nBusca por lenguaje natural, ve la ruta y escucha el archivo.")
+with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
+    gr.Markdown("# 🔎 Buscador de Sonidos por Texto\nBusca por lenguaje natural, ve la ruta y escucha el archivo.")
 
     with gr.Row():
         prompt = gr.Textbox(label="Escribe tu búsqueda", placeholder="ej. viento en bosque oscuro, ramas")
