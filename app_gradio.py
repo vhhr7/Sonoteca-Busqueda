@@ -27,9 +27,10 @@ MODEL = None
 INDEX = None
 RUTAS = []
 NOMBRES = []
+TEXTOS = []
 
 def cargar_lista(lista_txt):
-    rutas, nombres = [], []
+    rutas, nombres, textos = [], [], []
     with open(lista_txt, "r", encoding="utf-8") as f:
         for raw in f:
             line = raw.strip()
@@ -38,14 +39,17 @@ def cargar_lista(lista_txt):
             parts = line.split("\t")
             if len(parts) >= 2:
                 ruta, nombre = parts[0], parts[1]
+                comentario = parts[2] if len(parts) >= 3 else ""
             else:
-                # fallback: sin tab, usar basename como nombre
                 ruta = parts[0]
                 nombre = os.path.splitext(os.path.basename(parts[0]))[0].replace("_", " ").replace("-", " ")
+                comentario = ""
             if os.path.exists(ruta):
                 rutas.append(ruta)
                 nombres.append(nombre)
-    return rutas, nombres
+                texto = f"{nombre} {comentario}".strip()
+                textos.append(texto)
+    return rutas, nombres, textos
 
 def cargar_modelo():
     global MODEL
@@ -53,7 +57,7 @@ def cargar_modelo():
         MODEL = SentenceTransformer(MODEL_NAME)
     return MODEL
 
-def crear_o_cargar_indice(nombres):
+def crear_o_cargar_indice(textos):
     """Carga FAISS si el tamaño coincide; si no, re-embebe y reindexa."""
     global INDEX
     model = cargar_modelo()
@@ -61,14 +65,14 @@ def crear_o_cargar_indice(nombres):
     if os.path.exists(INDEX_FAISS):
         try:
             idx = faiss.read_index(INDEX_FAISS)
-            if idx.ntotal == len(nombres):
+            if idx.ntotal == len(textos):
                 INDEX = idx
                 return INDEX
         except Exception:
             pass  # si falla, recalculamos
 
     # Recalcular
-    embs = model.encode(nombres, convert_to_numpy=True, normalize_embeddings=True)
+    embs = model.encode(textos, convert_to_numpy=True, normalize_embeddings=True)
     dim = embs.shape[1]
     idx = faiss.IndexFlatIP(dim)  # producto interno (equiv. coseno al normalizar)
     idx.add(embs)
@@ -79,12 +83,12 @@ def crear_o_cargar_indice(nombres):
 
 def inicializar():
     """Carga lista, modelo e índice una sola vez."""
-    global RUTAS, NOMBRES
+    global RUTAS, NOMBRES, TEXTOS
     if not os.path.exists(LISTA_TXT):
         raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta primero preparar_lista.py con APP_ENV={APP_ENV}")
-    RUTAS, NOMBRES = cargar_lista(LISTA_TXT)
+    RUTAS, NOMBRES, TEXTOS = cargar_lista(LISTA_TXT)
     cargar_modelo()
-    crear_o_cargar_indice(NOMBRES)
+    crear_o_cargar_indice(TEXTOS)
 
 # ===== Lógica de búsqueda =====
 def buscar(prompt, k):
@@ -243,9 +247,10 @@ MODEL = None
 INDEX = None
 RUTAS = []
 NOMBRES = []
+TEXTOS = []
 
 def cargar_lista(lista_txt):
-    rutas, nombres = [], []
+    rutas, nombres, textos = [], [], []
     with open(lista_txt, "r", encoding="utf-8") as f:
         for raw in f:
             line = raw.strip()
@@ -254,14 +259,17 @@ def cargar_lista(lista_txt):
             parts = line.split("\t")
             if len(parts) >= 2:
                 ruta, nombre = parts[0], parts[1]
+                comentario = parts[2] if len(parts) >= 3 else ""
             else:
-                # fallback: sin tab, usar basename como nombre
                 ruta = parts[0]
                 nombre = os.path.splitext(os.path.basename(parts[0]))[0].replace("_", " ").replace("-", " ")
+                comentario = ""
             if os.path.exists(ruta):
                 rutas.append(ruta)
                 nombres.append(nombre)
-    return rutas, nombres
+                texto = f"{nombre} {comentario}".strip()
+                textos.append(texto)
+    return rutas, nombres, textos
 
 def cargar_modelo():
     global MODEL
@@ -269,7 +277,7 @@ def cargar_modelo():
         MODEL = SentenceTransformer(MODEL_NAME)
     return MODEL
 
-def crear_o_cargar_indice(nombres):
+def crear_o_cargar_indice(textos):
     """Carga FAISS si el tamaño coincide; si no, re-embebe y reindexa."""
     global INDEX
     model = cargar_modelo()
@@ -277,14 +285,14 @@ def crear_o_cargar_indice(nombres):
     if os.path.exists(INDEX_FAISS):
         try:
             idx = faiss.read_index(INDEX_FAISS)
-            if idx.ntotal == len(nombres):
+            if idx.ntotal == len(textos):
                 INDEX = idx
                 return INDEX
         except Exception:
             pass  # si falla, recalculamos
 
     # Recalcular
-    embs = model.encode(nombres, convert_to_numpy=True, normalize_embeddings=True)
+    embs = model.encode(textos, convert_to_numpy=True, normalize_embeddings=True)
     dim = embs.shape[1]
     idx = faiss.IndexFlatIP(dim)  # producto interno (equiv. coseno al normalizar)
     idx.add(embs)
@@ -295,12 +303,12 @@ def crear_o_cargar_indice(nombres):
 
 def inicializar():
     """Carga lista, modelo e índice una sola vez."""
-    global RUTAS, NOMBRES
+    global RUTAS, NOMBRES, TEXTOS
     if not os.path.exists(LISTA_TXT):
         raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta primero preparar_lista.py con APP_ENV={APP_ENV}")
-    RUTAS, NOMBRES = cargar_lista(LISTA_TXT)
+    RUTAS, NOMBRES, TEXTOS = cargar_lista(LISTA_TXT)
     cargar_modelo()
-    crear_o_cargar_indice(NOMBRES)
+    crear_o_cargar_indice(TEXTOS)
 
 # ===== Lógica de búsqueda =====
 def buscar(prompt, k):
