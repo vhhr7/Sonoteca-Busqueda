@@ -18,11 +18,14 @@ def convertir_si_aiff(ruta: str) -> str:
     return ruta
 
 # Selección de rutas por entorno
-APP_ENV = os.getenv("APP_ENV", "development")
+# En "production" (Codespaces), usamos el directorio "Index" al lado de este archivo.
+# En cualquier otro entorno (por ejemplo Docker local), usamos /sonoteca/Index.
+APP_ENV = os.getenv("APP_ENV", "production")
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 if APP_ENV == "production":
-    BASE_INDEX_DIR = "/sonoteca/Index"
+    BASE_INDEX_DIR = os.path.join(REPO_ROOT, "Index")  # Codespaces / workspace del repo
 else:
-    BASE_INDEX_DIR = "/Volumes/Libreria/Sonoteca/Index"
+    BASE_INDEX_DIR = "/sonoteca/Index"  # Docker en el servidor
 
 import faiss
 import numpy as np
@@ -327,11 +330,14 @@ import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # silencia warning de tokenizers
 
 # Selección de rutas por entorno
-APP_ENV = os.getenv("APP_ENV", "development")
+# En "production" (Codespaces), usamos el directorio "Index" al lado de este archivo.
+# En cualquier otro entorno (por ejemplo Docker local), usamos /sonoteca/Index.
+APP_ENV = os.getenv("APP_ENV", "production")
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 if APP_ENV == "production":
-    BASE_INDEX_DIR = "/sonoteca/Index"
+    BASE_INDEX_DIR = os.path.join(REPO_ROOT, "Index")  # Codespaces / workspace del repo
 else:
-    BASE_INDEX_DIR = "/Volumes/Libreria/Sonoteca/Index"
+    BASE_INDEX_DIR = "/sonoteca/Index"  # Docker en el servidor
 
 import faiss
 import numpy as np
