@@ -1,12 +1,18 @@
 from mutagen import File as MutagenFile
 import os
 
-APP_ENV = os.getenv("APP_ENV", "development")
+# Detectar si estamos en GitHub Codespaces
+IS_CODESPACES = os.getenv("CODESPACES") == "true" or os.getenv("GITHUB_CODESPACES") == "true" or os.path.exists("/workspaces")
 
+# En Codespaces forzamos production; en Docker (sin variable) queda "development" por defecto
+APP_ENV = "production" if IS_CODESPACES else os.getenv("APP_ENV", "development")
+
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 if APP_ENV == "production":
-    INDEX_DIR = "/sonoteca/Index"
+    BASE_DIR = REPO_ROOT            # Codespaces: usar la raíz del repo (junto a este archivo)
 else:
-    INDEX_DIR = "/Volumes/Libreria/Sonoteca/Index"
+    BASE_DIR = "/sonoteca"          # Docker: carpeta montada en el contenedor
+INDEX_DIR = os.path.join(BASE_DIR, "Index")
 
 os.makedirs(INDEX_DIR, exist_ok=True)
 
@@ -70,8 +76,5 @@ def preparar_lista_sonoteca(ruta_sonoteca, salida_txt=os.path.join(INDEX_DIR, "l
 
 
 if __name__ == "__main__":
-    if APP_ENV == "production":
-        ruta = "/sonoteca"
-    else:
-        ruta = "/Volumes/Libreria/Sonoteca"
+    ruta = BASE_DIR
     preparar_lista_sonoteca(ruta)
