@@ -20,7 +20,7 @@ def convertir_si_aiff(ruta: str) -> str:
 # Selección de rutas por entorno
 # En "production" (Codespaces), usamos el directorio "Index" al lado de este archivo.
 # En cualquier otro entorno (por ejemplo Docker local), usamos /sonoteca/Index.
-APP_ENV = os.getenv("APP_ENV", "production")
+APP_ENV = os.getenv("APP_ENV", "docker")
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 if APP_ENV == "production":
     BASE_INDEX_DIR = os.path.join(REPO_ROOT, "Index")  # Codespaces / workspace del repo
@@ -101,7 +101,7 @@ def inicializar():
     """Carga lista, modelo e índice una sola vez."""
     global RUTAS, NOMBRES, TEXTOS
     if not os.path.exists(LISTA_TXT):
-        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta primero preparar_lista.py con APP_ENV={APP_ENV}")
+        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta preparar_lista.py (APP_ENV={APP_ENV}) y verifica que el volumen /sonoteca esté montado.")
     RUTAS, NOMBRES, TEXTOS = cargar_lista(LISTA_TXT)
     cargar_modelo()
     crear_o_cargar_indice(TEXTOS)
@@ -332,7 +332,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"  # silencia warning de tokenizers
 # Selección de rutas por entorno
 # En "production" (Codespaces), usamos el directorio "Index" al lado de este archivo.
 # En cualquier otro entorno (por ejemplo Docker local), usamos /sonoteca/Index.
-APP_ENV = os.getenv("APP_ENV", "production")
+APP_ENV = os.getenv("APP_ENV", "docker")
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 if APP_ENV == "production":
     BASE_INDEX_DIR = os.path.join(REPO_ROOT, "Index")  # Codespaces / workspace del repo
@@ -413,7 +413,7 @@ def inicializar():
     """Carga lista, modelo e índice una sola vez."""
     global RUTAS, NOMBRES, TEXTOS
     if not os.path.exists(LISTA_TXT):
-        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta primero preparar_lista.py con APP_ENV={APP_ENV}")
+        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta preparar_lista.py (APP_ENV={APP_ENV}) y verifica que el volumen /sonoteca esté montado.")
     RUTAS, NOMBRES, TEXTOS = cargar_lista(LISTA_TXT)
     cargar_modelo()
     crear_o_cargar_indice(TEXTOS)
