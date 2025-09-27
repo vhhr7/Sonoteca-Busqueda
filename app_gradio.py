@@ -17,13 +17,32 @@ def convertir_si_aiff(ruta: str) -> str:
         return tmp.name
     return ruta
 
+NEXTCLOUD_ROOT = "/Volumes/nextcloud/vicherrera/files/Sonoteca"
+
+
+def ruta_para_nextcloud(ruta):
+    if not ruta:
+        return None
+    if ruta.startswith("/sonoteca"):
+        return ruta.replace("/sonoteca", NEXTCLOUD_ROOT, 1)
+    return ruta
+
 # Selección de rutas por entorno
-# En "production" (Codespaces), usamos el directorio "Index" al lado de este archivo.
+# En "production" (Codespaces), usamos el directorio "Index" o "index" al lado de este archivo.
 # En cualquier otro entorno (por ejemplo Docker local), usamos /sonoteca/Index.
 APP_ENV = os.getenv("APP_ENV", "docker")
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+def _repo_index_dir(root):
+    # Soporta 'Index' o 'index' (según el FS del entorno)
+    for name in ("Index", "index"):
+        p = os.path.join(root, name)
+        if os.path.isdir(p):
+            return p
+    # por si aún no existe, preferimos 'Index'
+    return os.path.join(root, "Index")
+
 if APP_ENV == "production":
-    BASE_INDEX_DIR = os.path.join(REPO_ROOT, "Index")  # Codespaces / workspace del repo
+    BASE_INDEX_DIR = _repo_index_dir(REPO_ROOT)  # Codespaces / workspace del repo
 else:
     BASE_INDEX_DIR = "/sonoteca/Index"  # Docker en el servidor
 
@@ -101,7 +120,7 @@ def inicializar():
     """Carga lista, modelo e índice una sola vez."""
     global RUTAS, NOMBRES, TEXTOS
     if not os.path.exists(LISTA_TXT):
-        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta preparar_lista.py (APP_ENV={APP_ENV}) y verifica que el volumen /sonoteca esté montado.")
+        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ruta base usada: {BASE_INDEX_DIR}. Ejecuta preparar_lista.py (APP_ENV={APP_ENV}) y verifica montaje/creación de la carpeta.")
     RUTAS, NOMBRES, TEXTOS = cargar_lista(LISTA_TXT)
     cargar_modelo()
     crear_o_cargar_indice(TEXTOS)
@@ -109,7 +128,7 @@ def inicializar():
 # ===== Lógica de búsqueda =====
 def buscar(prompt, k):
     if not prompt.strip():
-        return [], None, gr.update(choices=[], value=None)
+        return [], None, gr.update(choices=[], value=None), None
 
     q_emb = MODEL.encode([prompt], convert_to_numpy=True, normalize_embeddings=True)
     D, I = INDEX.search(q_emb, int(k))
@@ -137,7 +156,7 @@ def elegir_y_reproducir(eleccion, tabla):
     """
     # Si no hay elección, no hacemos nada
     if not eleccion:
-        return None
+        return None, None, None, gr.update(value="")
 
     # Normalizar la tabla a una lista de filas [[rank, nombre, ruta, score], ...]
     filas = None
@@ -146,7 +165,7 @@ def elegir_y_reproducir(eleccion, tabla):
         import pandas as pd  # import local para no obligar en tiempo de import
         if isinstance(tabla, pd.DataFrame):
             if tabla.empty:
-                return None
+                return None, None, None, gr.update(value="")
             filas = tabla.values.tolist()
     except Exception:
         pass
@@ -156,7 +175,7 @@ def elegir_y_reproducir(eleccion, tabla):
         if isinstance(tabla, list):
             # Puede venir como list de dicts o list de lists
             if not tabla:
-                return None
+                return None, None, None, gr.update(value="")
             if isinstance(tabla[0], dict):
                 # Ordenar columnas en el orden esperado
                 cols = ["#", "Nombre", "Ruta", "Score"]
@@ -165,52 +184,52 @@ def elegir_y_reproducir(eleccion, tabla):
                 filas = tabla
         else:
             # Tipo no soportado
-            return None
+            return None, None, None, gr.update(value="")
 
     # Parsear el índice seleccionado
     try:
         idx = int(str(eleccion).split(".")[0]) - 1
     except Exception:
-        return None
+        return None, None, None, gr.update(value="")
 
     if idx < 0 or idx >= len(filas):
-        return None
+        return None, None, None, gr.update(value="")
 
     # La columna 3 es la ruta según nuestro formato [rank, nombre, ruta, score]
     ruta = filas[idx][2]
     playback = convertir_si_aiff(ruta)
-    return playback, ruta
+    return playback, ruta, ruta, gr.update(value="")
 
 
 # === Helper para mover selección en resultados ===
 def _mover_reproduccion(eleccion, tabla, delta):
     """
     Mueve la selección actual delta posiciones (±1) dentro de la tabla de resultados
-    y devuelve (audio_playback, ruta_original, dropdown_update).
+    y devuelve (audio_playback, ruta_original, dropdown_update, ruta_original, reset_text).
     """
     if tabla is None:
-        return None, None, gr.update()
+        return None, None, gr.update(), None, gr.update(value="")
     # Normalizar la tabla a lista de filas [[#, nombre, ruta, score], ...]
     filas = None
     try:
         import pandas as pd
         if isinstance(tabla, pd.DataFrame):
             if tabla.empty:
-                return None, None, gr.update()
+                return None, None, gr.update(), None, gr.update(value="")
             filas = tabla.values.tolist()
     except Exception:
         pass
     if filas is None:
         if isinstance(tabla, list):
             if not tabla:
-                return None, None, gr.update()
+                return None, None, gr.update(), None, gr.update(value="")
             if isinstance(tabla[0], dict):
                 cols = ["#", "Nombre", "Ruta", "Score"]
                 filas = [[row.get(c) for c in cols] for row in tabla]
             else:
                 filas = tabla
         else:
-            return None, None, gr.update()
+            return None, None, gr.update(), None, gr.update(value="")
 
     # Índice actual a partir de 'eleccion' tipo "N. Nombre"
     try:
@@ -219,7 +238,7 @@ def _mover_reproduccion(eleccion, tabla, delta):
         cur = 0
 
     if not filas:
-        return None, None, gr.update()
+        return None, None, gr.update(), None, gr.update(value="")
 
     # Nuevo índice dentro de límites
     new = max(0, min(len(filas) - 1, cur + delta))
@@ -227,7 +246,7 @@ def _mover_reproduccion(eleccion, tabla, delta):
     nombre = filas[new][1]
     playback = convertir_si_aiff(ruta)
     new_value = f"{new+1}. {nombre}"
-    return playback, ruta, gr.update(value=new_value)
+    return playback, ruta, gr.update(value=new_value), ruta, gr.update(value="")
 
 # ===== UI Gradio =====
 with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
@@ -258,6 +277,10 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
 
     audio_out = gr.Audio(label="Reproductor", autoplay=True, elem_id="player")
     descarga = gr.File(label="Descargar original", file_count="single")
+    ruta_actual = gr.State(value=None)
+    with gr.Row():
+        obtener_ruta_btn = gr.Button("Obtener ruta Nextcloud")
+        ruta_nextcloud_txt = gr.Textbox(label="Ruta Nextcloud", value="", interactive=False)
     gr.HTML("""
     <script>
     (function () {
@@ -285,19 +308,29 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
     # Eventos
     def do_search(q, k):
         filas, audio_path, dd, download_path = buscar(q, k)
-        return filas, audio_path, dd, download_path
+        return filas, audio_path, dd, download_path, download_path, gr.update(value="")
 
     buscar_btn.click(
         do_search,
         inputs=[prompt, topk],
-        outputs=[resultados, audio_out, opcion, descarga],
+        outputs=[resultados, audio_out, opcion, descarga, ruta_actual, ruta_nextcloud_txt],
         preprocess=True
     )
 
     reproducir_btn.click(
         elegir_y_reproducir,
         inputs=[opcion, resultados],
-        outputs=[audio_out, descarga]
+        outputs=[audio_out, descarga, ruta_actual, ruta_nextcloud_txt]
+    )
+
+    def _mostrar_ruta(ruta):
+        mapped = ruta_para_nextcloud(ruta)
+        return gr.update(value=mapped or "")
+
+    obtener_ruta_btn.click(
+        _mostrar_ruta,
+        inputs=[ruta_actual],
+        outputs=[ruta_nextcloud_txt]
     )
 
     # Wrappers para navegación
@@ -309,12 +342,12 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
     anterior_btn.click(
         _anterior,
         inputs=[opcion, resultados],
-        outputs=[audio_out, descarga, opcion]
+        outputs=[audio_out, descarga, opcion, ruta_actual, ruta_nextcloud_txt]
     )
     siguiente_btn.click(
         _siguiente,
         inputs=[opcion, resultados],
-        outputs=[audio_out, descarga, opcion]
+        outputs=[audio_out, descarga, opcion, ruta_actual, ruta_nextcloud_txt]
     )
 
 # Lanzar
@@ -330,12 +363,21 @@ import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # silencia warning de tokenizers
 
 # Selección de rutas por entorno
-# En "production" (Codespaces), usamos el directorio "Index" al lado de este archivo.
+# En "production" (Codespaces), usamos el directorio "Index" o "index" al lado de este archivo.
 # En cualquier otro entorno (por ejemplo Docker local), usamos /sonoteca/Index.
 APP_ENV = os.getenv("APP_ENV", "docker")
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+def _repo_index_dir(root):
+    # Soporta 'Index' o 'index' (según el FS del entorno)
+    for name in ("Index", "index"):
+        p = os.path.join(root, name)
+        if os.path.isdir(p):
+            return p
+    # por si aún no existe, preferimos 'Index'
+    return os.path.join(root, "Index")
+
 if APP_ENV == "production":
-    BASE_INDEX_DIR = os.path.join(REPO_ROOT, "Index")  # Codespaces / workspace del repo
+    BASE_INDEX_DIR = _repo_index_dir(REPO_ROOT)  # Codespaces / workspace del repo
 else:
     BASE_INDEX_DIR = "/sonoteca/Index"  # Docker en el servidor
 
@@ -413,7 +455,7 @@ def inicializar():
     """Carga lista, modelo e índice una sola vez."""
     global RUTAS, NOMBRES, TEXTOS
     if not os.path.exists(LISTA_TXT):
-        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta preparar_lista.py (APP_ENV={APP_ENV}) y verifica que el volumen /sonoteca esté montado.")
+        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ruta base usada: {BASE_INDEX_DIR}. Ejecuta preparar_lista.py (APP_ENV={APP_ENV}) y verifica montaje/creación de la carpeta.")
     RUTAS, NOMBRES, TEXTOS = cargar_lista(LISTA_TXT)
     cargar_modelo()
     crear_o_cargar_indice(TEXTOS)
@@ -421,7 +463,7 @@ def inicializar():
 # ===== Lógica de búsqueda =====
 def buscar(prompt, k):
     if not prompt.strip():
-        return [], None, gr.update(choices=[], value=None)
+        return [], None, gr.update(choices=[], value=None), None
 
     q_emb = MODEL.encode([prompt], convert_to_numpy=True, normalize_embeddings=True)
     D, I = INDEX.search(q_emb, int(k))
@@ -448,7 +490,7 @@ def elegir_y_reproducir(eleccion, tabla):
     """
     # Si no hay elección, no hacemos nada
     if not eleccion:
-        return None
+        return None, None, None, gr.update(value="")
 
     # Normalizar la tabla a una lista de filas [[rank, nombre, ruta, score], ...]
     filas = None
@@ -457,7 +499,7 @@ def elegir_y_reproducir(eleccion, tabla):
         import pandas as pd  # import local para no obligar en tiempo de import
         if isinstance(tabla, pd.DataFrame):
             if tabla.empty:
-                return None
+                return None, None, None, gr.update(value="")
             filas = tabla.values.tolist()
     except Exception:
         pass
@@ -467,7 +509,7 @@ def elegir_y_reproducir(eleccion, tabla):
         if isinstance(tabla, list):
             # Puede venir como list de dicts o list de lists
             if not tabla:
-                return None
+                return None, None, None, gr.update(value="")
             if isinstance(tabla[0], dict):
                 # Ordenar columnas en el orden esperado
                 cols = ["#", "Nombre", "Ruta", "Score"]
@@ -476,52 +518,52 @@ def elegir_y_reproducir(eleccion, tabla):
                 filas = tabla
         else:
             # Tipo no soportado
-            return None
+            return None, None, None, gr.update(value="")
 
     # Parsear el índice seleccionado
     try:
         idx = int(str(eleccion).split(".")[0]) - 1
     except Exception:
-        return None
+        return None, None, None, gr.update(value="")
 
     if idx < 0 or idx >= len(filas):
-        return None
+        return None, None, None, gr.update(value="")
 
     # La columna 3 es la ruta según nuestro formato [rank, nombre, ruta, score]
     ruta = filas[idx][2]
     playback = convertir_si_aiff(ruta)
-    return playback, ruta
+    return playback, ruta, ruta, gr.update(value="")
 
 
 # === Helper para mover selección en resultados ===
 def _mover_reproduccion(eleccion, tabla, delta):
     """
     Mueve la selección actual delta posiciones (±1) dentro de la tabla de resultados
-    y devuelve (audio_playback, ruta_original, dropdown_update).
+    y devuelve (audio_playback, ruta_original, dropdown_update, ruta_original, reset_text).
     """
     if tabla is None:
-        return None, None, gr.update()
+        return None, None, gr.update(), None, gr.update(value="")
     # Normalizar la tabla a lista de filas [[#, nombre, ruta, score], ...]
     filas = None
     try:
         import pandas as pd
         if isinstance(tabla, pd.DataFrame):
             if tabla.empty:
-                return None, None, gr.update()
+                return None, None, gr.update(), None, gr.update(value="")
             filas = tabla.values.tolist()
     except Exception:
         pass
     if filas is None:
         if isinstance(tabla, list):
             if not tabla:
-                return None, None, gr.update()
+                return None, None, gr.update(), None, gr.update(value="")
             if isinstance(tabla[0], dict):
                 cols = ["#", "Nombre", "Ruta", "Score"]
                 filas = [[row.get(c) for c in cols] for row in tabla]
             else:
                 filas = tabla
         else:
-            return None, None, gr.update()
+            return None, None, gr.update(), None, gr.update(value="")
 
     # Índice actual a partir de 'eleccion' tipo "N. Nombre"
     try:
@@ -530,7 +572,7 @@ def _mover_reproduccion(eleccion, tabla, delta):
         cur = 0
 
     if not filas:
-        return None, None, gr.update()
+        return None, None, gr.update(), None, gr.update(value="")
 
     # Nuevo índice dentro de límites
     new = max(0, min(len(filas) - 1, cur + delta))
@@ -538,7 +580,7 @@ def _mover_reproduccion(eleccion, tabla, delta):
     nombre = filas[new][1]
     playback = convertir_si_aiff(ruta)
     new_value = f"{new+1}. {nombre}"
-    return playback, ruta, gr.update(value=new_value)
+    return playback, ruta, gr.update(value=new_value), ruta, gr.update(value="")
 
 # ===== UI Gradio =====
 with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
@@ -569,6 +611,10 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
 
     audio_out = gr.Audio(label="Reproductor", autoplay=True, elem_id="player")
     descarga = gr.File(label="Descargar original", file_count="single")
+    ruta_actual = gr.State(value=None)
+    with gr.Row():
+        obtener_ruta_btn = gr.Button("Obtener ruta Nextcloud")
+        ruta_nextcloud_txt = gr.Textbox(label="Ruta Nextcloud", value="", interactive=False)
     gr.HTML("""
     <script>
     (function () {
@@ -596,19 +642,29 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
     # Eventos
     def do_search(q, k):
         filas, audio_path, dd, download_path = buscar(q, k)
-        return filas, audio_path, dd, download_path
+        return filas, audio_path, dd, download_path, download_path, gr.update(value="")
 
     buscar_btn.click(
         do_search,
         inputs=[prompt, topk],
-        outputs=[resultados, audio_out, opcion, descarga],
+        outputs=[resultados, audio_out, opcion, descarga, ruta_actual, ruta_nextcloud_txt],
         preprocess=True
     )
 
     reproducir_btn.click(
         elegir_y_reproducir,
         inputs=[opcion, resultados],
-        outputs=[audio_out, descarga]
+        outputs=[audio_out, descarga, ruta_actual, ruta_nextcloud_txt]
+    )
+
+    def _mostrar_ruta(ruta):
+        mapped = ruta_para_nextcloud(ruta)
+        return gr.update(value=mapped or "")
+
+    obtener_ruta_btn.click(
+        _mostrar_ruta,
+        inputs=[ruta_actual],
+        outputs=[ruta_nextcloud_txt]
     )
 
     # Wrappers para navegación
@@ -620,12 +676,12 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
     anterior_btn.click(
         _anterior,
         inputs=[opcion, resultados],
-        outputs=[audio_out, descarga, opcion]
+        outputs=[audio_out, descarga, opcion, ruta_actual, ruta_nextcloud_txt]
     )
     siguiente_btn.click(
         _siguiente,
         inputs=[opcion, resultados],
-        outputs=[audio_out, descarga, opcion]
+        outputs=[audio_out, descarga, opcion, ruta_actual, ruta_nextcloud_txt]
     )
 
 # Lanzar

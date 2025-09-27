@@ -6,13 +6,13 @@ APP_ENV = os.getenv("APP_ENV", "development")
 if APP_ENV == "production":
     # Cuando estés en Codespaces, usamos la carpeta dentro del proyecto
     BASE_DIR = "/workspaces/Sonoteca-Busqueda"
-    SOUNDS_DIR = os.path.join(BASE_DIR, "sounds___")
-    INDEX_DIR = os.path.join(BASE_DIR, "index___")
+    SOUNDS_DIR = os.path.join(BASE_DIR, "sonoteca")
+    INDEX_DIR = os.path.join(BASE_DIR, "index")
 else:
     # Cuando corras en Docker en tu servidor
     BASE_DIR = "/sonoteca"
-    SOUNDS_DIR = os.path.join(BASE_DIR, "sounds___")
-    INDEX_DIR = os.path.join(BASE_DIR, "index___")
+    SOUNDS_DIR = os.path.join(BASE_DIR, "sonoteca")
+    INDEX_DIR = os.path.join(BASE_DIR, "index")
 
 os.makedirs(INDEX_DIR, exist_ok=True)
 
