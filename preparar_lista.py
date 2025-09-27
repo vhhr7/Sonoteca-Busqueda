@@ -1,18 +1,18 @@
 from mutagen import File as MutagenFile
 import os
 
-# Detectar si estamos en GitHub Codespaces
-IS_CODESPACES = os.getenv("CODESPACES") == "true" or os.getenv("GITHUB_CODESPACES") == "true" or os.path.exists("/workspaces")
+APP_ENV = os.getenv("APP_ENV", "development")
 
-# En Codespaces forzamos production; en Docker (sin variable) queda "development" por defecto
-APP_ENV = "production" if IS_CODESPACES else os.getenv("APP_ENV", "development")
-
-REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 if APP_ENV == "production":
-    BASE_DIR = REPO_ROOT            # Codespaces: usar la raíz del repo (junto a este archivo)
+    # Cuando estés en Codespaces, usamos la carpeta dentro del proyecto
+    BASE_DIR = "/workspaces/Sonoteca-Busqueda"
+    SOUNDS_DIR = os.path.join(BASE_DIR, "sounds___")
+    INDEX_DIR = os.path.join(BASE_DIR, "index___")
 else:
-    BASE_DIR = "/sonoteca"          # Docker: carpeta montada en el contenedor
-INDEX_DIR = os.path.join(BASE_DIR, "Index")
+    # Cuando corras en Docker en tu servidor
+    BASE_DIR = "/sonoteca"
+    SOUNDS_DIR = os.path.join(BASE_DIR, "sounds___")
+    INDEX_DIR = os.path.join(BASE_DIR, "index___")
 
 os.makedirs(INDEX_DIR, exist_ok=True)
 
