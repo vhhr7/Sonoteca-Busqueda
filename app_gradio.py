@@ -18,12 +18,21 @@ def convertir_si_aiff(ruta: str) -> str:
     return ruta
 
 # Selección de rutas por entorno
-# En "production" (Codespaces), usamos el directorio "Index" al lado de este archivo.
+# En "production" (Codespaces), usamos el directorio "Index" o "index" al lado de este archivo.
 # En cualquier otro entorno (por ejemplo Docker local), usamos /sonoteca/Index.
 APP_ENV = os.getenv("APP_ENV", "docker")
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+def _repo_index_dir(root):
+    # Soporta 'Index' o 'index' (según el FS del entorno)
+    for name in ("Index", "index"):
+        p = os.path.join(root, name)
+        if os.path.isdir(p):
+            return p
+    # por si aún no existe, preferimos 'Index'
+    return os.path.join(root, "Index")
+
 if APP_ENV == "production":
-    BASE_INDEX_DIR = os.path.join(REPO_ROOT, "Index")  # Codespaces / workspace del repo
+    BASE_INDEX_DIR = _repo_index_dir(REPO_ROOT)  # Codespaces / workspace del repo
 else:
     BASE_INDEX_DIR = "/sonoteca/Index"  # Docker en el servidor
 
@@ -101,7 +110,7 @@ def inicializar():
     """Carga lista, modelo e índice una sola vez."""
     global RUTAS, NOMBRES, TEXTOS
     if not os.path.exists(LISTA_TXT):
-        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta preparar_lista.py (APP_ENV={APP_ENV}) y verifica que el volumen /sonoteca esté montado.")
+        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ruta base usada: {BASE_INDEX_DIR}. Ejecuta preparar_lista.py (APP_ENV={APP_ENV}) y verifica montaje/creación de la carpeta.")
     RUTAS, NOMBRES, TEXTOS = cargar_lista(LISTA_TXT)
     cargar_modelo()
     crear_o_cargar_indice(TEXTOS)
@@ -330,12 +339,21 @@ import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # silencia warning de tokenizers
 
 # Selección de rutas por entorno
-# En "production" (Codespaces), usamos el directorio "Index" al lado de este archivo.
+# En "production" (Codespaces), usamos el directorio "Index" o "index" al lado de este archivo.
 # En cualquier otro entorno (por ejemplo Docker local), usamos /sonoteca/Index.
 APP_ENV = os.getenv("APP_ENV", "docker")
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+def _repo_index_dir(root):
+    # Soporta 'Index' o 'index' (según el FS del entorno)
+    for name in ("Index", "index"):
+        p = os.path.join(root, name)
+        if os.path.isdir(p):
+            return p
+    # por si aún no existe, preferimos 'Index'
+    return os.path.join(root, "Index")
+
 if APP_ENV == "production":
-    BASE_INDEX_DIR = os.path.join(REPO_ROOT, "Index")  # Codespaces / workspace del repo
+    BASE_INDEX_DIR = _repo_index_dir(REPO_ROOT)  # Codespaces / workspace del repo
 else:
     BASE_INDEX_DIR = "/sonoteca/Index"  # Docker en el servidor
 
@@ -413,7 +431,7 @@ def inicializar():
     """Carga lista, modelo e índice una sola vez."""
     global RUTAS, NOMBRES, TEXTOS
     if not os.path.exists(LISTA_TXT):
-        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ejecuta preparar_lista.py (APP_ENV={APP_ENV}) y verifica que el volumen /sonoteca esté montado.")
+        raise FileNotFoundError(f"No existe {LISTA_TXT}. Ruta base usada: {BASE_INDEX_DIR}. Ejecuta preparar_lista.py (APP_ENV={APP_ENV}) y verifica montaje/creación de la carpeta.")
     RUTAS, NOMBRES, TEXTOS = cargar_lista(LISTA_TXT)
     cargar_modelo()
     crear_o_cargar_indice(TEXTOS)
