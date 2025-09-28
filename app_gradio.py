@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 import os
+import json
+import threading
+from datetime import datetime
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # silencia warning de tokenizers
 from pydub import AudioSegment
 import tempfile
@@ -56,6 +60,11 @@ LISTA_TXT = os.path.join(BASE_INDEX_DIR, "lista_sonoteca.txt")          # genera
 INDEX_FAISS = os.path.join(BASE_INDEX_DIR, "sonoteca.index")            # índice persistente (si existe, se carga)
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 TOP_K_DEFAULT = 10
+
+FEEDBACK_FILE = os.path.join(BASE_INDEX_DIR, "feedback.jsonl")
+FEEDBACK_LOCK = threading.Lock()
+FEEDBACK_DATA: dict[str, dict[str, int]] = {}
+FEEDBACK_BOOST = 0.05
 
 # ==== Estado global (se cargan una vez) ====
 MODEL = None
@@ -116,6 +125,65 @@ def crear_o_cargar_indice(textos):
     INDEX = idx
     return INDEX
 
+
+def cargar_feedback():
+    """Carga el historial de feedback desde disco en memoria."""
+    global FEEDBACK_DATA
+    FEEDBACK_DATA = {}
+    if not os.path.exists(FEEDBACK_FILE):
+        return
+    with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            ruta = entry.get("ruta")
+            if not ruta:
+                continue
+            stats = FEEDBACK_DATA.setdefault(ruta, {"likes": 0, "dislikes": 0})
+            if entry.get("liked"):
+                stats["likes"] += 1
+            else:
+                stats["dislikes"] += 1
+
+
+def _feedback_stats(ruta: str) -> tuple[int, int, int]:
+    stats = FEEDBACK_DATA.get(ruta)
+    if not stats:
+        return 0, 0, 0
+    likes = stats.get("likes", 0)
+    dislikes = stats.get("dislikes", 0)
+    return likes, dislikes, likes - dislikes
+
+
+def registrar_feedback(ruta: str | None, prompt: str | None, liked: bool, topk: int | None = None) -> str:
+    if not ruta:
+        return "Selecciona un resultado antes de enviar feedback."
+    entry = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "ruta": ruta,
+        "prompt": (prompt or "").strip(),
+        "liked": bool(liked),
+        "topk": int(topk) if topk is not None else None,
+    }
+    os.makedirs(os.path.dirname(FEEDBACK_FILE), exist_ok=True)
+    with FEEDBACK_LOCK:
+        with open(FEEDBACK_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        stats = FEEDBACK_DATA.setdefault(ruta, {"likes": 0, "dislikes": 0})
+        if entry["liked"]:
+            stats["likes"] += 1
+        else:
+            stats["dislikes"] += 1
+    likes = stats["likes"]
+    dislikes = stats["dislikes"]
+    return f"Feedback guardado · {likes} 👍 / {dislikes} 👎"
+
+
 def inicializar():
     """Carga lista, modelo e índice una sola vez."""
     global RUTAS, NOMBRES, TEXTOS
@@ -124,6 +192,7 @@ def inicializar():
     RUTAS, NOMBRES, TEXTOS = cargar_lista(LISTA_TXT)
     cargar_modelo()
     crear_o_cargar_indice(TEXTOS)
+    cargar_feedback()
 
 # ===== Lógica de búsqueda =====
 def buscar(prompt, k):
@@ -132,20 +201,32 @@ def buscar(prompt, k):
 
     q_emb = MODEL.encode([prompt], convert_to_numpy=True, normalize_embeddings=True)
     D, I = INDEX.search(q_emb, int(k))
-    filas = []
-    opciones = []
-    for rank, idx in enumerate(I[0]):
-        # Puede devolver -1 si no hay suficientes resultados; filtrar
+    candidatos = []
+    for idx, score in zip(I[0], D[0]):
         if idx < 0 or idx >= len(NOMBRES):
             continue
         ruta = RUTAS[idx]
         nombre = NOMBRES[idx]
-        score = float(D[0][rank])
-        filas.append([rank + 1, nombre, ruta, round(score, 3)])
-        opciones.append(f"{rank+1}. {nombre}")
-    # Seleccionar por defecto el top-1 si hay
+        base_score = float(score)
+        likes, dislikes, net = _feedback_stats(ruta)
+        adjusted = base_score + FEEDBACK_BOOST * net
+        candidatos.append((adjusted, base_score, nombre, ruta, likes, dislikes))
+
+    if not candidatos:
+        return [], None, gr.update(choices=[], value=None), None
+
+    candidatos.sort(key=lambda item: (item[0], item[1]), reverse=True)
+
+    filas = []
+    opciones = []
+    for rank, (_, base_score, nombre, ruta, likes, dislikes) in enumerate(candidatos, start=1):
+        filas.append([rank, nombre, ruta, round(base_score, 3)])
+        label = f"{rank}. {nombre}"
+        if likes or dislikes:
+            label += f" ({likes}👍/{dislikes}👎)"
+        opciones.append(label)
+
     selected = opciones[0] if opciones else None
-    # Ruta original del top-1 (para descarga) y ruta de reproducción (convertida si es AIFF)
     download_path = filas[0][2] if filas else None
     audio_path = convertir_si_aiff(download_path) if download_path else None
     return filas, audio_path, gr.update(choices=opciones, value=selected), download_path
@@ -283,6 +364,14 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
         obtener_ruta_btn = gr.Button("Obtener ruta Nextcloud", elem_id="btn-copy")
         ruta_nextcloud_txt = gr.Textbox(label="Ruta Nextcloud", value="", interactive=False, elem_id="ruta-nextcloud")
 
+    feedback_msg = gr.Markdown("", elem_id="feedback-msg")
+    with gr.Row():
+        feedback_positive_btn = gr.Button("✅ Me sirve", variant="primary")
+        feedback_negative_btn = gr.Button("❌ No me sirve")
+
+    ultimo_prompt = gr.State(value="")
+    ultimo_topk = gr.State(value=TOP_K_DEFAULT)
+
     gr.HTML("""
     <script>
     (function () {
@@ -309,7 +398,8 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
     """)
     # Eventos
     def do_search(q, k):
-        filas, audio_path, dd, download_path = buscar(q, k)
+        prompt_clean = (q or "").strip()
+        filas, audio_path, dd, download_path = buscar(prompt_clean, k)
         return (
             filas,
             audio_path,
@@ -317,13 +407,16 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
             download_path,
             download_path,
             download_path,
-            gr.update(value="")
+            gr.update(value=""),
+            gr.update(value=""),
+            prompt_clean,
+            int(k)
         )
 
     buscar_btn.click(
         do_search,
         inputs=[prompt, topk],
-        outputs=[resultados, audio_out, opcion, descarga, ruta_actual, ruta_actual_txt, ruta_nextcloud_txt],
+        outputs=[resultados, audio_out, opcion, descarga, ruta_actual, ruta_actual_txt, ruta_nextcloud_txt, feedback_msg, ultimo_prompt, ultimo_topk],
         preprocess=True
     )
 
@@ -414,6 +507,25 @@ with gr.Blocks(title="Buscador de Sonidos por Texto") as demo:
                 return [mapped];
             }
         """
+    )
+
+    def _feedback_positive(ruta, prompt_guardado, topk_guardado):
+        mensaje = registrar_feedback(ruta, prompt_guardado, True, topk_guardado)
+        return gr.update(value=mensaje)
+
+    def _feedback_negative(ruta, prompt_guardado, topk_guardado):
+        mensaje = registrar_feedback(ruta, prompt_guardado, False, topk_guardado)
+        return gr.update(value=mensaje)
+
+    feedback_positive_btn.click(
+        _feedback_positive,
+        inputs=[ruta_actual, ultimo_prompt, ultimo_topk],
+        outputs=[feedback_msg]
+    )
+    feedback_negative_btn.click(
+        _feedback_negative,
+        inputs=[ruta_actual, ultimo_prompt, ultimo_topk],
+        outputs=[feedback_msg]
     )
 
     # Wrappers para navegación
